@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -18,69 +19,74 @@ const (
 	dataDir = "data"
 )
 
-func getEnvDefault(key, defaultValue string) string {
-	value, ok := os.LookupEnv(key)
-	if !ok {
-		return defaultValue
-	}
-	return value
+type IMAP struct {
+	ccc    *client.Client
+	cursor uint32
+
+	server   string
+	username string
+	password string
+	folder   string
 }
 
-func main() {
-	err := godotenv.Load()
+func New(server, username, password, folder string) (i *IMAP, err error) {
+	i = &IMAP{
+		ccc:    nil,
+		cursor: 1,
+
+		server:   server,
+		username: username,
+		password: password,
+		folder:   folder,
+	}
+
+	i.readCursor()
+	return
+}
+
+func (i *IMAP) GetMessages() (err error) {
+	i.ccc, err = client.DialTLS(i.server, nil)
 	if err != nil {
-		log.Println("Error loading .env file")
+		err = fmt.Errorf("TLS connection failed: %v", err)
+		return
 	}
 
-	username, ok := os.LookupEnv("EMAIL")
-	if !ok {
-		log.Fatal("EMAIL var is not set")
-	}
-	password, ok := os.LookupEnv("PASSWORD")
-	if !ok {
-		log.Println("PASSWORD var is not set")
-	}
-
-	server := getEnvDefault("SERVER", "imap.gmail.com:993")
-	folder := getEnvDefault("FOLDER", "INBOX")
-
-	ccc, err := client.DialTLS(server, nil)
+	err = i.ccc.Login(i.username, i.password)
 	if err != nil {
-		log.Fatalf("TLS failed: %v\n", err)
+		err = fmt.Errorf("Login failed: %v", err)
+		return
 	}
 
-	err = ccc.Login(username, password)
-	if err != nil {
-		log.Println("Failed to login:", err)
-	} else {
-		log.Println("Succesfully logged in...")
-	}
+	log.Println("Successfully logged in...")
 
-	mbox, err := ccc.Select(folder, false)
+	mbox, err := i.ccc.Select(i.folder, true)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if mbox.Messages == 0 {
-		log.Fatal("No messages in mailbox")
-	} else {
-		log.Printf("Total message(s) in inbox: %d\n", mbox.Messages)
+	if mbox.Messages == 0 || mbox.Messages <= i.cursor {
+		log.Println("There are no new messages.")
+		return
 	}
+
+	log.Printf("Total message(s) in inbox: %d\n", mbox.Messages)
 	seqSet := new(imap.SeqSet)
-	seqSet.AddRange(1, mbox.Messages)
+	seqSet.AddRange(i.cursor, mbox.Messages)
 
 	var section imap.BodySectionName
 	items := []imap.FetchItem{section.FetchItem()}
 
 	messages := make(chan *imap.Message, mbox.Messages)
 	go func() {
-		if err := ccc.Fetch(seqSet, items, messages); err != nil {
+		if err := i.ccc.Fetch(seqSet, items, messages); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
+	var c uint32
 	for elem := range messages {
-		log.Println("Message no: ", elem.SeqNum)
+		// log.Println("Message no: ", elem.SeqNum)
+		c = elem.SeqNum
 
 		if elem == nil {
 			log.Fatal("Server didn't return message")
@@ -109,50 +115,133 @@ func main() {
 		tag = sr[1]
 		tagDir := filepath.Join(dataDir, tag)
 
-		if subject, err := header.Subject(); err == nil {
-			log.Println("Subject:", subject)
+		err = handleMessage(mr, tagDir)
+		if err != nil {
+			log.Fatal("Error handling message:", err)
 		}
-		if date, err := header.Date(); err == nil {
-			log.Println("Date:", date)
+	}
+
+	err = i.writeCursor(c)
+	if err != nil {
+		log.Println("Error writing cursor:", err)
+	}
+
+	err = i.ccc.Logout()
+	if err != nil {
+		log.Println("Failed to logout:", err)
+	}
+
+	return
+}
+
+func handleMessage(mr *mail.Reader, tagDir string) (err error) {
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			break
 		}
-		if from, err := header.AddressList("From"); err == nil {
-			log.Println("From:", from)
+		if err != nil {
+			log.Fatal(err)
 		}
 
-		for {
-			p, err := mr.NextPart()
-			if err == io.EOF {
-				break
-			}
+		switch h := p.Header.(type) {
+		case *mail.AttachmentHeader:
+			err := os.MkdirAll(tagDir, os.ModePerm)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			switch h := p.Header.(type) {
-			case *mail.AttachmentHeader:
-				err := os.MkdirAll(tagDir, os.ModePerm)
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				filename, err := h.Filename()
-				if err != nil {
-					filename = time.Now().Format(time.DateTime)
-				}
-
-				file, err := os.Create(filepath.Join(tagDir, filename))
-				if err != nil {
-					log.Fatal(err)
-				}
-				defer file.Close()
-				io.Copy(file, p.Body)
-				log.Println("Attachment:", filename)
+			filename, err := h.Filename()
+			if err != nil {
+				filename = time.Now().Format(time.DateTime)
 			}
-		}
 
+			filePath := filepath.Join(tagDir, filename)
+			if _, err := os.Stat(filePath); err == nil {
+				log.Println("File already exists, skipping:", filename)
+				continue
+			}
+
+			file, err := os.Create(filePath)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer file.Close()
+			io.Copy(file, p.Body)
+			log.Println("Attachment:", filename)
+		}
+	}
+	return
+}
+
+func (i *IMAP) readCursor() uint32 {
+	f, err := os.Open(filepath.Join(dataDir, "cursor.txt"))
+	if err != nil {
+		i.cursor = 1
+		return 1
+	}
+	defer f.Close()
+
+	_, err = fmt.Fscanf(f, "%d", &i.cursor)
+	if err != nil {
+		i.cursor = 1
 	}
 
-	if err := ccc.Logout(); err != nil {
-		log.Printf("Failed to logout: %v\n", err)
+	return i.cursor
+}
+
+func (i *IMAP) writeCursor(cursor uint32) error {
+	if i.cursor == cursor {
+		return nil
+	}
+
+	f, err := os.Create(filepath.Join(dataDir, "cursor.txt"))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = fmt.Fprintf(f, "%d\n", cursor)
+	i.cursor = cursor
+	return nil
+}
+
+func getEnvDefault(key, defaultValue string) string {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return defaultValue
+	}
+	return value
+}
+
+func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("Error loading .env file")
+	}
+
+	username, ok := os.LookupEnv("EMAIL")
+	if !ok {
+		log.Fatal("EMAIL var is not set")
+	}
+	password, ok := os.LookupEnv("PASSWORD")
+	if !ok {
+		log.Println("PASSWORD var is not set")
+	}
+
+	server := getEnvDefault("SERVER", "imap.gmail.com:993")
+	folder := getEnvDefault("FOLDER", "INBOX")
+
+	i, err := New(server, username, password, folder)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for {
+		err = i.GetMessages()
+		if err != nil {
+			log.Println(err)
+		}
+		time.Sleep(time.Hour)
 	}
 }
