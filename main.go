@@ -9,6 +9,8 @@ import (
 
 const dataDir = "data"
 
+var token string
+
 func getEnvDefault(key, defaultValue string) string {
 	value, ok := os.LookupEnv(key)
 	if !ok {
@@ -26,6 +28,10 @@ func main() {
 	if !ok {
 		log.Println("PASSWORD var is not set")
 	}
+	token, ok = os.LookupEnv("TOKEN")
+	if !ok {
+		log.Fatal("TOKEN var is not set")
+	}
 
 	server := getEnvDefault("SERVER", "imap.gmail.com:993")
 	folder := getEnvDefault("FOLDER", "INBOX")
@@ -40,8 +46,8 @@ func main() {
 
 	// API
 	r := http.NewServeMux()
-	r.HandleFunc("GET /api/codes", getCodes)
-	r.HandleFunc("GET /api/attachments", getAttachments)
+	r.HandleFunc("GET /api/codes", checkToken(getCodes))
+	r.HandleFunc("GET /api/attachments", checkToken(getAttachments))
 
 	s := &http.Server{
 		Addr:         ":3000",

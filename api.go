@@ -5,6 +5,16 @@ import (
 	"net/http"
 )
 
+func checkToken(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != token {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
 func getCodes(w http.ResponseWriter, r *http.Request) {
 	var codes []Code
 	db.Preload("Attachment").Find(&codes)
