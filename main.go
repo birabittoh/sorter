@@ -12,7 +12,6 @@ import (
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message/mail"
-	"github.com/joho/godotenv"
 )
 
 const (
@@ -113,9 +112,8 @@ func (i *IMAP) GetMessages() (err error) {
 			continue // ignore emails without tag
 		}
 		tag = sr[1]
-		tagDir := filepath.Join(dataDir, tag)
 
-		err = handleMessage(mr, tagDir)
+		err = handleMessage(mr, tag)
 		if err != nil {
 			log.Fatal("Error handling message:", err)
 		}
@@ -134,7 +132,9 @@ func (i *IMAP) GetMessages() (err error) {
 	return
 }
 
-func handleMessage(mr *mail.Reader, tagDir string) (err error) {
+func handleMessage(mr *mail.Reader, tag string) (err error) {
+	tagDir := filepath.Join(dataDir, tag)
+
 	for {
 		p, err := mr.NextPart()
 		if err == io.EOF {
@@ -169,6 +169,19 @@ func handleMessage(mr *mail.Reader, tagDir string) (err error) {
 			defer file.Close()
 			io.Copy(file, p.Body)
 			log.Println("Attachment:", filename)
+
+			attachment := Attachment{
+				Tag:     tag,
+				Name:    filename,
+				Website: "",
+				Amount:  0,
+				Codes:   []Code{{Code: "test"}},
+			}
+
+			err = db.Create(&attachment).Error
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 	return
@@ -215,11 +228,6 @@ func getEnvDefault(key, defaultValue string) string {
 }
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("Error loading .env file")
-	}
-
 	username, ok := os.LookupEnv("EMAIL")
 	if !ok {
 		log.Fatal("EMAIL var is not set")
