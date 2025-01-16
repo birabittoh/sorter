@@ -7,6 +7,8 @@ services:
       - gmc
     env_file:
       - .env
+    environment:
+      - GMC_INSTANCE=http://gmc:5000/
     ports:
       - 127.0.0.1:3000:3000
     volumes:

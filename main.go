@@ -39,7 +39,8 @@ func main() {
 
 	server := getEnvDefault("SERVER", "imap.gmail.com:993")
 	folder := getEnvDefault("FOLDER", "INBOX")
-	gmc := getEnvDefault("GMC_INSTANCE", "http://gmc:8080/")
+	gmc := getEnvDefault("GMC_INSTANCE", "http://localhost:5000/")
+	addr := getEnvDefault("ADDR", ":3000")
 
 	i, err := New(server, username, password, from, folder, gmc)
 	if err != nil {
@@ -52,9 +53,10 @@ func main() {
 	r := http.NewServeMux()
 	r.HandleFunc("GET /api/codes", checkToken(getCodes))
 	r.HandleFunc("GET /api/attachments", checkToken(getAttachments))
+	r.HandleFunc("POST /api/codes/{id}", checkToken(setDone))
 
 	s := &http.Server{
-		Addr:         ":3000",
+		Addr:         addr,
 		Handler:      r,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
