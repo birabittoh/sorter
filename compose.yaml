@@ -1,0 +1,17 @@
+services:
+  sorter:
+    image: ghcr.io/birabittoh/sorter:main
+    build: .
+    container_name: sorter
+    depends_on:
+      - gmc
+    env_file:
+      - .env
+    ports:
+      - 127.0.0.1:3000:3000
+    volumes:
+      - ./data:/app/data
+  
+  gmc:
+    image: ghcr.io/birabittoh/gmc:main
+    container_name: gmc

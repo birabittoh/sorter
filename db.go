@@ -14,6 +14,8 @@ type Code struct {
 	gorm.Model
 	AttachmentID uint   `json:"attachment_id"`
 	Code         string `json:"code"`
+	Value        uint   `json:"value"`
+	Website      string `json:"website"`
 	Done         bool   `json:"done"`
 
 	Attachment Attachment `json:"attachment"`
@@ -21,10 +23,8 @@ type Code struct {
 
 type Attachment struct {
 	gorm.Model
-	Tag     string `json:"tag"`
-	Name    string `json:"name"`
-	Website string `json:"website"`
-	Amount  uint   `json:"amount"`
+	Tag      string `json:"tag"`
+	Filename string `json:"filename"`
 
 	Codes []Code `json:"codes"`
 }
