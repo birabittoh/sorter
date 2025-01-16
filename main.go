@@ -32,12 +32,16 @@ func main() {
 	if !ok {
 		log.Fatal("TOKEN var is not set")
 	}
+	from, ok := os.LookupEnv("FROM")
+	if !ok {
+		log.Fatal("FROM var is not set")
+	}
 
 	server := getEnvDefault("SERVER", "imap.gmail.com:993")
 	folder := getEnvDefault("FOLDER", "INBOX")
 	gmc := getEnvDefault("GMC_INSTANCE", "http://gmc:8080/")
 
-	i, err := New(server, username, password, folder, gmc)
+	i, err := New(server, username, password, from, folder, gmc)
 	if err != nil {
 		log.Fatal(err)
 	}

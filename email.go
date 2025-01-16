@@ -25,11 +25,12 @@ type IMAP struct {
 	server   string
 	username string
 	password string
+	from     string
 	folder   string
 	gmc      string
 }
 
-func New(server, username, password, folder, gmc string) (i *IMAP, err error) {
+func New(server, username, password, from, folder, gmc string) (i *IMAP, err error) {
 	i = &IMAP{
 		ccc:    nil,
 		cursor: 1,
@@ -37,6 +38,7 @@ func New(server, username, password, folder, gmc string) (i *IMAP, err error) {
 		server:   server,
 		username: username,
 		password: password,
+		from:     from,
 		folder:   folder,
 		gmc:      gmc,
 	}
@@ -116,7 +118,7 @@ func (i *IMAP) GetMessages() (err error) {
 		}
 		tag = sr[1]
 
-		err = handleMessage(mr, tag, i.gmc)
+		err = handleMessage(mr, tag, i.from, i.gmc)
 		if err != nil {
 			log.Fatal("Error handling message:", err)
 		}
@@ -135,8 +137,27 @@ func (i *IMAP) GetMessages() (err error) {
 	return
 }
 
-func handleMessage(mr *mail.Reader, tag, gmc string) (err error) {
+func checkFrom(froms []*mail.Address, from string) bool {
+	for _, f := range froms {
+		if f.Address == from {
+			return true
+		}
+	}
+	return false
+}
+
+func handleMessage(mr *mail.Reader, tag, from, gmc string) (err error) {
 	tagDir := filepath.Join(dataDir, tag)
+
+	al, err := mr.Header.AddressList("From")
+	if err != nil {
+		log.Println("Error getting from:", err)
+		return
+	}
+
+	if !checkFrom(al, from) {
+		return
+	}
 
 	for {
 		p, err := mr.NextPart()
