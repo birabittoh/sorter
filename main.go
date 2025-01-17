@@ -11,14 +11,6 @@ const dataDir = "data"
 
 var token string
 
-func getEnvDefault(key, defaultValue string) string {
-	value, ok := os.LookupEnv(key)
-	if !ok {
-		return defaultValue
-	}
-	return value
-}
-
 func main() {
 	username, ok := os.LookupEnv("EMAIL")
 	if !ok {
@@ -53,7 +45,8 @@ func main() {
 	r := http.NewServeMux()
 	r.HandleFunc("GET /api/codes", checkToken(getCodes))
 	r.HandleFunc("GET /api/attachments", checkToken(getAttachments))
-	r.HandleFunc("POST /api/codes/{id}", checkToken(setDone))
+	r.HandleFunc("GET /api/tags", checkToken(getTags))
+	r.HandleFunc("POST /api/codes/{id}", checkToken(setCode))
 
 	s := &http.Server{
 		Addr:         addr,

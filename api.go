@@ -1,15 +1,16 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
+
+	"gorm.io/gorm"
 )
 
 // curl http://localhost:3000/api/codes -H "Authorization: TOKEN"
 func checkToken(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != token {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			jsonError(w, http.StatusUnauthorized, "Unauthorized")
 			return
 		}
 		next(w, r)
@@ -17,33 +18,85 @@ func checkToken(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func getCodes(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	tag := q.Get("tag")
+	done := q.Get("done")
+
+	query := db.Model(&Code{}).Preload("Attachment").Joins("JOIN attachments ON codes.attachment_id = attachments.id")
+
+	if tag != "" {
+		query = query.Where("attachments.tag = ?", tag)
+	}
+	if done != "" {
+		query = query.Where("codes.done = ?", parseBool(done))
+	}
+
 	var codes []Code
-	err := db.Preload("Attachment").Find(&codes).Error
+	err := query.Find(&codes).Error
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	json.NewEncoder(w).Encode(codes)
+
+	jsonResponse(w, http.StatusOK, codes)
 }
 
 func getAttachments(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	tag := q.Get("tag")
+	done := q.Get("done")
+
 	var attachments []Attachment
-	err := db.Preload("Codes").Find(&attachments).Error
+	query := db.Preload("Codes")
+	if tag != "" {
+		query = query.Where(&Attachment{Tag: tag})
+	}
+
+	err := query.Find(&attachments).Error
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	json.NewEncoder(w).Encode(attachments)
+
+	if done != "" {
+		attachments = filterAttachmentsByDone(attachments, parseBool(done))
+	}
+
+	jsonResponse(w, http.StatusOK, attachments)
 }
 
-func setDone(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var code Code
-	err := db.First(&code, id).Error
+func getTags(w http.ResponseWriter, r *http.Request) {
+	var tags []string
+	err := db.Model(&Attachment{}).Distinct("tag").Pluck("tag", &tags).Error
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	code.Done = true
-	db.Save(&code)
+
+	jsonResponse(w, http.StatusOK, tags)
+}
+
+func setCode(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	r.ParseForm()
+
+	var changed bool
+	query := db.Model(&Code{}).Where("id = ?", id).Session(&gorm.Session{})
+
+	done := r.Form.Get("done")
+	if done != "" {
+		err := query.Update("done", done).Error
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		changed = true
+	}
+
+	if changed {
+		jsonResponse(w, http.StatusAccepted, nil)
+		return
+	}
+
+	jsonError(w, http.StatusNotFound, "nothing to do")
 }

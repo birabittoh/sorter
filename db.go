@@ -51,3 +51,21 @@ func init() {
 		panic(err)
 	}
 }
+
+func filterAttachmentsByDone(attachments []Attachment, isDone bool) (filtered []Attachment) {
+	for _, attachment := range attachments {
+		if attachment.IsDone() == isDone {
+			filtered = append(filtered, attachment)
+		}
+	}
+	return filtered
+}
+
+func (a *Attachment) IsDone() bool {
+	for _, code := range a.Codes {
+		if !code.Done {
+			return false
+		}
+	}
+	return true
+}
