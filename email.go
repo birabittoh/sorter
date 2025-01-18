@@ -62,12 +62,12 @@ func (i *IMAP) GetMessages() (err error) {
 
 	log.Println("Successfully logged in...")
 
-	mbox, err := i.ccc.Select(i.folder, true)
+	mbox, err := i.ccc.Select(i.folder, false)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if mbox.Messages == 0 || mbox.Messages <= i.cursor {
+	if mbox.Messages == 0 || mbox.Messages < i.cursor {
 		log.Println("There are no new messages.")
 		return
 	}
@@ -122,6 +122,17 @@ func (i *IMAP) GetMessages() (err error) {
 		if err != nil {
 			log.Fatal("Error handling message:", err)
 		}
+
+		if elem.Flags != nil && !contains(elem.Flags, imap.SeenFlag) {
+			seq := new(imap.SeqSet)
+			seq.AddNum(elem.SeqNum)
+			item := imap.FormatFlagsOp(imap.AddFlags, true)
+			flags := []interface{}{imap.SeenFlag}
+			err = i.ccc.Store(seq, item, flags, nil)
+			if err != nil {
+				log.Println("Error marking message as read:", err)
+			}
+		}
 	}
 
 	err = i.writeCursor(c)
@@ -135,6 +146,15 @@ func (i *IMAP) GetMessages() (err error) {
 	}
 
 	return
+}
+
+func contains[T comparable](strSlice []T, str T) bool {
+	for _, s := range strSlice {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }
 
 func checkFrom(froms []*mail.Address, from string) bool {
