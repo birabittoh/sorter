@@ -78,14 +78,18 @@ func getTags(w http.ResponseWriter, r *http.Request) {
 
 func setCode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	r.ParseForm()
+	err := r.ParseForm()
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	var changed bool
 	query := db.Model(&Code{}).Where("id = ?", id).Session(&gorm.Session{})
 
 	done := r.Form.Get("done")
 	if done != "" {
-		err := query.Update("done", done).Error
+		err := query.Update("done", parseBool(done)).Error
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, err.Error())
 			return
