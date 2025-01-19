@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -76,6 +78,31 @@ func getTags(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, tags)
 }
 
+func getTasks(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	today := q.Get("today")
+	card := q.Get("card")
+
+	query := db.Order("created_at DESC")
+	if parseBool(today) { // today=true if today=""
+		today := time.Now().Truncate(24 * time.Hour)
+		tomorrow := today.Add(24 * time.Hour)
+		query = query.Where("created_at >= ? AND created_at < ?", today, tomorrow)
+	}
+	if card != "" {
+		query = query.Where("card = ?", card)
+	}
+
+	var tasks []Task
+	err := query.Find(&tasks).Error
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, tasks)
+}
+
 func setCode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	err := r.ParseForm()
@@ -103,4 +130,26 @@ func setCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonError(w, http.StatusNotFound, "nothing to do")
+}
+
+func newTask(w http.ResponseWriter, r *http.Request) {
+	var task Task
+	err := json.NewDecoder(r.Body).Decode(&task)
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if task.Card == "" || task.Amount == 0 {
+		jsonError(w, http.StatusBadRequest, "Card and amount are required")
+		return
+	}
+
+	err = db.Create(&task).Error
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusCreated, task)
 }

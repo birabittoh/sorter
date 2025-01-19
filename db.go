@@ -10,6 +10,12 @@ import (
 	"gorm.io/gorm"
 )
 
+type Task struct {
+	gorm.Model
+	Card   string `json:"card"`
+	Amount uint   `json:"amount"`
+}
+
 type Code struct {
 	gorm.Model
 	AttachmentID uint   `json:"attachment_id"`
@@ -46,7 +52,7 @@ func init() {
 		panic(err)
 	}
 
-	err = db.AutoMigrate(&Attachment{}, &Code{})
+	err = db.AutoMigrate(&Task{}, &Attachment{}, &Code{})
 	if err != nil {
 		panic(err)
 	}
