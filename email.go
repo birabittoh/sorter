@@ -309,12 +309,12 @@ func (i *IMAP) writeCursor(cursor uint32) error {
 	return nil
 }
 
-func checkMail(i *IMAP) {
+func checkMail(i *IMAP, interval time.Duration) {
 	for {
 		err := i.GetMessages()
 		if err != nil {
 			log.Println(err)
 		}
-		time.Sleep(time.Hour)
+		time.Sleep(interval)
 	}
 }

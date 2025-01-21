@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -29,6 +30,12 @@ func main() {
 		log.Fatal("FROM var is not set")
 	}
 
+	minutesStr := getEnvDefault("CHECK_INTERVAL", "15")
+	minutes, err := strconv.ParseUint(minutesStr, 10, 64)
+	if err != nil {
+		minutes = 15
+	}
+
 	server := getEnvDefault("SERVER", "imap.gmail.com:993")
 	folder := getEnvDefault("FOLDER", "INBOX")
 	gmc := getEnvDefault("GMC_INSTANCE", "http://localhost:5000/")
@@ -39,7 +46,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	go checkMail(i)
+	go checkMail(i, time.Duration(minutes)*time.Minute)
 
 	// API
 	r := http.NewServeMux()
