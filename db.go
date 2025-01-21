@@ -75,3 +75,12 @@ func (a *Attachment) IsDone() bool {
 	}
 	return true
 }
+
+func (a *Attachment) IsPartiallyDone() bool {
+	for _, code := range a.Codes {
+		if code.Done {
+			return true
+		}
+	}
+	return false
+}

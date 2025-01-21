@@ -54,6 +54,7 @@ func main() {
 	r.HandleFunc("GET /api/attachments", checkToken(getAttachments))
 	r.HandleFunc("GET /api/tags", checkToken(getTags))
 	r.HandleFunc("GET /api/tasks", checkToken(getTasks))
+	r.HandleFunc("POST /api/attachments/{id}", checkToken(setAttachment))
 	r.HandleFunc("POST /api/codes/{id}", checkToken(setCode))
 	r.HandleFunc("POST /api/tasks", checkToken(newTask))
 

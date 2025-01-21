@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"gorm.io/gorm"
@@ -101,6 +103,72 @@ func getTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, tasks)
+}
+
+func setAttachment(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	err := r.ParseForm()
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	tag := r.Form.Get("tag")
+	if tag == "" {
+		jsonError(w, http.StatusBadRequest, "Tag is required")
+		return
+	}
+
+	// ensure attachment exists
+	var attachment Attachment
+	err = db.Preload("Codes").First(&attachment, id).Error
+	if err != nil {
+		jsonError(w, http.StatusNotFound, "Attachment not found")
+		return
+	}
+
+	if attachment.IsPartiallyDone() {
+		jsonError(w, http.StatusNotAcceptable, "Attachment was already claimed")
+		return
+	}
+
+	if attachment.Tag == tag {
+		jsonError(w, http.StatusNotModified, "Tag is the same")
+		return
+	}
+
+	// ensure tag folder exists
+	tagDir := filepath.Join(dataDir, tag)
+	err = os.MkdirAll(tagDir, os.ModePerm)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// move attachment
+	oldPath := filepath.Join(dataDir, attachment.Tag, attachment.Filename)
+	newPath := filepath.Join(tagDir, attachment.Filename)
+	err = os.Rename(oldPath, newPath)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// update attachment
+	err = db.Model(&attachment).Update("tag", tag).Error
+	if err != nil {
+		// rollback
+		rollbackErr := os.Rename(newPath, oldPath)
+		if rollbackErr != nil {
+			jsonError(w, http.StatusInternalServerError, "Could not rollback file changes: "+err.Error())
+			return
+		}
+
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusAccepted, nil)
 }
 
 func setCode(w http.ResponseWriter, r *http.Request) {
