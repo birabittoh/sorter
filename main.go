@@ -40,8 +40,9 @@ func main() {
 	folder := getEnvDefault("FOLDER", "INBOX")
 	gmc := getEnvDefault("GMC_INSTANCE", "http://localhost:5000/")
 	addr := getEnvDefault("ADDR", ":3000")
+	sims := os.Getenv("SIMS")
 
-	i, err := New(server, username, password, from, folder, gmc)
+	i, err := New(server, username, password, from, folder, gmc, sims)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -54,6 +55,7 @@ func main() {
 	r.HandleFunc("GET /api/attachments", checkToken(getAttachments))
 	r.HandleFunc("GET /api/tags", checkToken(getTags))
 	r.HandleFunc("GET /api/tasks", checkToken(getTasks))
+	r.HandleFunc("GET /api/messages", checkToken(getMessages))
 	r.HandleFunc("POST /api/attachments/{id}", checkToken(setAttachment))
 	r.HandleFunc("POST /api/codes/{id}", checkToken(setCode))
 	r.HandleFunc("POST /api/tasks", checkToken(newTask))

@@ -10,14 +10,21 @@ import (
 	"gorm.io/gorm"
 )
 
+type Model struct {
+	ID        uint `json:"id"`
+	CreatedAt int  `json:"created_at"`
+	UpdatedAt int  `json:"updated_at"`
+	DeletedAt int  `json:"deleted_at"`
+}
+
 type Task struct {
-	gorm.Model
+	Model
 	Card   string `json:"card"`
 	Amount uint   `json:"amount"`
 }
 
 type Code struct {
-	gorm.Model
+	Model
 	AttachmentID uint   `json:"attachment_id"`
 	Code         string `json:"code"`
 	Value        uint   `json:"value"`
@@ -28,11 +35,18 @@ type Code struct {
 }
 
 type Attachment struct {
-	gorm.Model
+	Model
 	Tag      string `json:"tag"`
 	Filename string `json:"filename"`
 
 	Codes []Code `json:"codes"`
+}
+
+type Message struct {
+	Model
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Content string `json:"content"`
 }
 
 var db *gorm.DB
@@ -52,7 +66,7 @@ func init() {
 		panic(err)
 	}
 
-	err = db.AutoMigrate(&Task{}, &Attachment{}, &Code{})
+	err = db.AutoMigrate(&Task{}, &Attachment{}, &Code{}, &Message{})
 	if err != nil {
 		panic(err)
 	}

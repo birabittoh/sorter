@@ -22,25 +22,38 @@ type IMAP struct {
 	ccc    *client.Client
 	cursor uint32
 
-	server   string
-	username string
-	password string
-	from     string
-	folder   string
-	gmc      string
+	server    string
+	username  string
+	password  string
+	folder    string
+	gmc       string
+	whitelist []string
+	sims      map[string]string
 }
 
-func New(server, username, password, from, folder, gmc string) (i *IMAP, err error) {
+func New(server, username, password, from, folder, gmc, sims string) (i *IMAP, err error) {
 	i = &IMAP{
 		ccc:    nil,
 		cursor: 1,
 
-		server:   server,
-		username: username,
-		password: password,
-		from:     from,
-		folder:   folder,
-		gmc:      gmc,
+		server:    server,
+		username:  username,
+		password:  password,
+		folder:    folder,
+		gmc:       gmc,
+		whitelist: []string{from, username},
+		sims:      map[string]string{},
+	}
+
+	if sims != "" {
+		entries := strings.Split(sims, ",")
+		for _, entry := range entries {
+			parts := strings.Split(entry, ":")
+			if len(parts) != 2 {
+				continue
+			}
+			i.sims[parts[0]] = parts[1]
+		}
 	}
 
 	i.readCursor()
@@ -106,19 +119,7 @@ func (i *IMAP) GetMessages() (err error) {
 			log.Fatal(err)
 		}
 
-		var tag string
-		header := mr.Header
-		to, err := header.AddressList("To")
-		if err != nil {
-			continue // ignore emails without To
-		}
-		sr := strings.Split(strings.Split(to[0].Address, "@")[0], "+")
-		if len(sr) < 2 {
-			continue // ignore emails without tag
-		}
-		tag = sr[1]
-
-		err = handleMessage(mr, tag, i.from, i.gmc)
+		err = i.HandleMessage(mr)
 		if err != nil {
 			log.Fatal("Error handling message:", err)
 		}
@@ -157,28 +158,62 @@ func contains[T comparable](strSlice []T, str T) bool {
 	return false
 }
 
-func checkFrom(froms []*mail.Address, from string) bool {
+func checkFrom(froms []*mail.Address, whitelist []string) bool {
 	for _, f := range froms {
-		if f.Address == from {
+		if contains(whitelist, f.Address) {
 			return true
 		}
 	}
 	return false
 }
 
-func handleMessage(mr *mail.Reader, tag, from, gmc string) (err error) {
-	tagDir := filepath.Join(dataDir, tag)
+func handleSMS(mr *mail.Reader, from, tag string, sims map[string]string) error {
+	var body, x string
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	al, err := mr.Header.AddressList("From")
+		content, err := io.ReadAll(p.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+		body += string(content)
+	}
+
+	content, found := strings.CutPrefix(body, "SIM 1: ")
+	if found {
+		x = "1"
+	} else {
+		content, found = strings.CutPrefix(body, "SIM 0: ")
+		if found {
+			x = "0"
+		}
+	}
+
+	if x == "" {
+		content = body
+	}
+
+	msg := Message{
+		From:    from,
+		To:      sims[tag+"_"+x],
+		Content: content,
+	}
+
+	err := db.Create(&msg).Error
 	if err != nil {
-		log.Println("Error getting from:", err)
-		return
+		log.Fatal(err)
 	}
 
-	if !checkFrom(al, from) {
-		return
-	}
+	return nil
+}
 
+func handleAttachment(mr *mail.Reader, tag string, i *IMAP) error {
 	for {
 		p, err := mr.NextPart()
 		if err == io.EOF {
@@ -190,6 +225,7 @@ func handleMessage(mr *mail.Reader, tag, from, gmc string) (err error) {
 
 		switch h := p.Header.(type) {
 		case *mail.AttachmentHeader:
+			tagDir := filepath.Join(dataDir, tag)
 			err := os.MkdirAll(tagDir, os.ModePerm)
 			if err != nil {
 				log.Fatal(err)
@@ -214,7 +250,7 @@ func handleMessage(mr *mail.Reader, tag, from, gmc string) (err error) {
 			io.Copy(file, p.Body)
 			log.Println("Attachment:", filename)
 
-			codes, _ := parseCodes(filePath, gmc)
+			codes, _ := parseCodes(filePath, i.gmc)
 			if err != nil {
 				continue
 			}
@@ -231,7 +267,42 @@ func handleMessage(mr *mail.Reader, tag, from, gmc string) (err error) {
 			}
 		}
 	}
-	return
+	return nil
+}
+
+func (i *IMAP) HandleMessage(mr *mail.Reader) (err error) {
+	header := mr.Header
+	to, err := header.AddressList("To")
+	if err != nil {
+		return nil // ignore emails without To
+	}
+	sr := strings.Split(strings.Split(to[0].Address, "@")[0], "+")
+	if len(sr) < 2 {
+		return nil // ignore emails without tag
+	}
+	tag := sr[1]
+
+	subject, err := header.Subject()
+	if err != nil {
+		log.Println("Error getting subject:", err)
+	}
+
+	al, err := mr.Header.AddressList("From")
+	if err != nil {
+		log.Println("Error getting from:", err)
+		return
+	}
+
+	if !checkFrom(al, i.whitelist) {
+		return
+	}
+
+	simTag, found := strings.CutPrefix(tag, "sim-")
+	if found {
+		return handleSMS(mr, strings.TrimPrefix(subject, "[SMS] "), simTag, i.sims)
+	}
+
+	return handleAttachment(mr, tag, i)
 }
 
 func parseCodes(filePath, gmc string) (codes []Code, err error) {

@@ -105,6 +105,25 @@ func getTasks(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, tasks)
 }
 
+func getMessages(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	to := q.Get("to")
+
+	query := db.Order("created_at DESC")
+	if to != "" {
+		query = query.Where("to = ?", to)
+	}
+
+	var messages []Message
+	err := query.Find(&messages).Error
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, messages)
+}
+
 func setAttachment(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	err := r.ParseForm()
