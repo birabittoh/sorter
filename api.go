@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -239,4 +240,13 @@ func newTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusCreated, task)
+}
+
+func refresh(w http.ResponseWriter, r *http.Request) {
+	log.Println("A refresh was requested.")
+	jsonResponse(w, http.StatusNoContent, nil)
+	go func() {
+		time.Sleep(time.Second)
+		os.Exit(0)
+	}()
 }
