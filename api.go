@@ -111,7 +111,7 @@ func getMessages(w http.ResponseWriter, r *http.Request) {
 
 	query := db.Order("created_at DESC")
 	if to != "" {
-		query = query.Where("to = ?", to)
+		query = query.Where(&Message{To: to})
 	}
 
 	var messages []Message
