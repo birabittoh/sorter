@@ -80,7 +80,7 @@ func (i *IMAP) GetMessages() (err error) {
 		log.Fatal(err)
 	}
 
-	if mbox.Messages == 0 || mbox.Messages < i.cursor {
+	if mbox.Messages == 0 || mbox.Messages <= i.cursor {
 		log.Println("There are no new messages.")
 		return
 	}
