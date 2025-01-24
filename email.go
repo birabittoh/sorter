@@ -29,6 +29,7 @@ type IMAP struct {
 	gmc       string
 	whitelist []string
 	sims      map[string]string
+	refresh   chan struct{}
 }
 
 func New(server, username, password, from, folder, gmc, sims string) (i *IMAP, err error) {
@@ -43,6 +44,7 @@ func New(server, username, password, from, folder, gmc, sims string) (i *IMAP, e
 		gmc:       gmc,
 		whitelist: []string{from, username},
 		sims:      map[string]string{},
+		refresh:   make(chan struct{}),
 	}
 
 	if sims != "" {
@@ -386,6 +388,11 @@ func checkMail(i *IMAP, interval time.Duration) {
 		if err != nil {
 			log.Println(err)
 		}
-		time.Sleep(interval)
+
+		select {
+		case <-time.After(interval):
+		case <-i.refresh:
+			log.Println("Refreshing...")
+		}
 	}
 }

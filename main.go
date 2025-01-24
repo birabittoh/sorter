@@ -59,7 +59,7 @@ func main() {
 	r.HandleFunc("POST /api/attachments/{id}", checkToken(setAttachment))
 	r.HandleFunc("POST /api/codes/{id}", checkToken(setCode))
 	r.HandleFunc("POST /api/tasks", checkToken(newTask))
-	r.HandleFunc("POST /api/refresh", checkToken(refresh))
+	r.HandleFunc("POST /api/refresh", checkToken(refresh(i)))
 
 	s := &http.Server{
 		Addr:         addr,
