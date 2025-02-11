@@ -126,13 +126,8 @@ func getMessages(w http.ResponseWriter, r *http.Request) {
 
 func setAttachment(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	err := r.ParseForm()
-	if err != nil {
-		jsonError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 
-	tag := r.Form.Get("tag")
+	tag := r.FormValue("tag")
 	if tag == "" {
 		jsonError(w, http.StatusBadRequest, "Tag is required")
 		return
@@ -140,7 +135,7 @@ func setAttachment(w http.ResponseWriter, r *http.Request) {
 
 	// ensure attachment exists
 	var attachment Attachment
-	err = db.Preload("Codes").First(&attachment, id).Error
+	err := db.Preload("Codes").First(&attachment, id).Error
 	if err != nil {
 		jsonError(w, http.StatusNotFound, "Attachment not found")
 		return
